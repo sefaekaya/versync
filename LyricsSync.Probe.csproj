@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Windows.Media.Control (SMTC) API'leri için Windows SDK projeksiyonu gerekir -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <!-- GlobalSystemMediaTransportControlsSessionManager Windows 10 1809 (17763) ile geldi -->
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LyricsSync.Probe</RootNamespace>
+    <AssemblyName>LyricsSync.Probe</AssemblyName>
+    <InvariantGlobalization>false</InvariantGlobalization>
+
+    <!-- Bu klasörün altındaki diğer projeler (çekirdek kütüphane ve masaüstü uygulaması)
+         bu konsol prototipine karışmasın. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);LyricsSync.Core\**;LyricsSync.Desktop\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+</Project>
