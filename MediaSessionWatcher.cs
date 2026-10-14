@@ -26,6 +26,10 @@ public sealed class MediaSessionWatcher : IAsyncDisposable
     private Timer? _pollTimer;
     private bool _disposed;
 
+    private CoverArt? _cover;
+    private string? _coverKey;
+    private int _coverAttempts;
+
     public MediaSessionWatcher(Func<string, bool> appFilter) => _appFilter = appFilter;
 
     /// <summary>İnsan tarafından okunabilir olay günlüğü (şarkı değişti, duraklatıldı, sarıldı...).</summary>
@@ -34,6 +38,12 @@ public sealed class MediaSessionWatcher : IAsyncDisposable
     public MediaSnapshot? Current
     {
         get { lock (_gate) return _snapshot; }
+    }
+
+    /// <summary>Çalan şarkının noktalı kapak çizimi (henüz yüklenmediyse veya başka şarkıya aitse null).</summary>
+    public CoverArt? Cover
+    {
+        get { lock (_gate) return _cover; }
     }
 
     /// <summary>Sistemde o an görünen tüm medya oturumlarının uygulama kimlikleri (teşhis için).</summary>
@@ -183,6 +193,7 @@ public sealed class MediaSessionWatcher : IAsyncDisposable
             }
 
             ReportChanges(previous, snapshot);
+            await EnsureCoverAsync(props, snapshot.TrackKey);
         }
         catch (Exception ex)
         {
@@ -192,6 +203,43 @@ public sealed class MediaSessionWatcher : IAsyncDisposable
         finally
         {
             _refreshLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Şarkı değişince kapağı bir kez yükler. Spotify küçük resmi bazen şarkı bilgisinden birkaç
+    /// saniye sonra verir; boş gelirse sonraki yoklamalarda (en çok 8 kez) yeniden denenir.
+    /// </summary>
+    private async Task EnsureCoverAsync(GlobalSystemMediaTransportControlsSessionMediaProperties? props, string trackKey)
+    {
+        lock (_gate)
+        {
+            if (_coverKey != trackKey)
+            {
+                _coverKey = trackKey;
+                _coverAttempts = 0;
+                _cover = null;
+            }
+            else if (_cover is not null || _coverAttempts >= 8)
+            {
+                return;
+            }
+            _coverAttempts++;
+        }
+
+        try
+        {
+            if (props?.Thumbnail is null) return;
+            using var stream = await props.Thumbnail.OpenReadAsync();
+            var cover = await CoverArt.FromStreamAsync(stream, trackKey);
+            lock (_gate)
+            {
+                if (_coverKey == trackKey) _cover = cover;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.Invoke($"Kapak okunamadı: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

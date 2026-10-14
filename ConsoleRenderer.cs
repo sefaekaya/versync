@@ -30,7 +30,15 @@ public sealed class ConsoleRenderer
     /// <summary>Söz alanının sabit yüksekliği: 1 bilgi satırı + her söz için en fazla 2 satır.</summary>
     private const int LyricsRows = 1 + Slots * 2;
 
-    private readonly record struct Row(string Text, ConsoleColor Color);
+    /// <summary>Cover: satırın solundaki hazır (ANSI renkli) kapak parçası; boşsa aynı genişlikte boşluk bırakılır.</summary>
+    private readonly record struct Row(string Text, ConsoleColor Color, string? Cover = null);
+
+    /// <summary>Kapağın kapladığı genişlik + araya boşluk.</summary>
+    private const int CoverGutter = CoverArt.Columns + 2;
+    /// <summary>Kapağı göstermek için gereken en az konsol genişliği.</summary>
+    private const int MinWidthForCover = CoverGutter + 60;
+
+    private bool _ansi;
 
     private readonly MediaSessionWatcher _watcher;
     private readonly LyricsService _lyrics;
@@ -69,6 +77,7 @@ public sealed class ConsoleRenderer
     {
         if (!_redirected)
         {
+            _ansi = CoverArt.EnableAnsi();
             Console.CursorVisible = false;
             Console.Clear();
         }
@@ -176,14 +185,26 @@ public sealed class ConsoleRenderer
         catch { width = 79; }
 
         var rows = BuildRows(snap, now, width);
+        AttachCover(rows, snap, width);
 
         try
         {
             Console.SetCursorPosition(0, 0);
             foreach (var row in rows)
             {
-                Console.ForegroundColor = row.Color;
-                Console.Write(Fit(row.Text, width));
+                if (row.Cover is not null)
+                {
+                    // Kapak parçası kendi renk kodlarını taşır; sonra metin kalan genişliğe sığdırılır.
+                    Console.Write(row.Cover);
+                    Console.Write("  ");
+                    Console.ForegroundColor = row.Color;
+                    Console.Write(Fit(row.Text, width - CoverGutter));
+                }
+                else
+                {
+                    Console.ForegroundColor = row.Color;
+                    Console.Write(Fit(row.Text, width));
+                }
                 Console.Write('\n');
             }
 
@@ -202,12 +223,37 @@ public sealed class ConsoleRenderer
         }
     }
 
+    /// <summary>
+    /// Kapağı, başlık ve ilk çizgiden sonraki satırların soluna yerleştirir.
+    /// Metin satırları sağa kayar; kapak bittikten sonra kalan satırlar tam genişlikte devam eder.
+    /// </summary>
+    private void AttachCover(List<Row> rows, MediaSnapshot? snap, int width)
+    {
+        var cover = _watcher.Cover;
+        if (!_ansi || snap is null || cover is null || cover.TrackKey != snap.TrackKey || width < MinWidthForCover)
+            return;
+
+        const int firstRow = 2; // başlık + çizgi sonrası
+
+        // Kapak bilgi + söz bloğundan uzunsa, alttaki satırlar eksik kalıp kapağı kesmesin diye boş satır ekle.
+        while (rows.Count < firstRow + CoverArt.Rows)
+            rows.Add(new("", ConsoleColor.Gray));
+
+        for (int i = 0; i < CoverArt.Rows; i++)
+        {
+            var r = rows[firstRow + i];
+            if (r.Text.Length > 0 && r.Text[0] == '─')
+                r = r with { Text = new string('─', Math.Max(1, width - CoverGutter)) };
+            rows[firstRow + i] = r with { Cover = cover.Lines[i] };
+        }
+    }
+
     private List<Row> BuildRows(MediaSnapshot? snap, DateTimeOffset now, int width)
     {
         var rule = new Row(new string('─', width), ConsoleColor.DarkGray);
         var rows = new List<Row>
         {
-            new(" Spotify Lyrics Sync — Aşama 3 (Türkçe çeviri)", ConsoleColor.White),
+            new(" Spotify Lyrics Sync", ConsoleColor.White),
             rule,
         };
 
