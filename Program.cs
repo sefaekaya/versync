@@ -6,13 +6,13 @@ using LyricsSync.Probe.Storage;
 using LyricsSync.Probe.Translation;
 
 // -----------------------------------------------------------------------------------------
-// Aşama 3: SMTC'den Spotify'ın çaldığı şarkıyı ve konumunu okur, LRCLIB'den senkron
+// Aşama 3: SMTC'den (Windows) veya AppleScript'ten (macOS) Spotify'ın çaldığı şarkıyı ve konumunu okur, LRCLIB'den senkron
 // sözleri çeker, tüm şarkıyı Türkçeye çevirir (Claude veya DeepL) ve konsolda o anki
 // satırı çevirisiyle birlikte vurgular.
 //
 // Kullanım:
 //   dotnet run                → yalnızca Spotify'ı izler
-//   dotnet run -- --any       → hangi uygulama çalıyorsa onu izler (tarayıcı, VLC vb. test için)
+//   dotnet run -- --any       → hangi uygulama çalıyorsa onu izler (tarayıcı, VLC vb. test için; yalnızca Windows)
 //   dotnet run -- --list      → sistemdeki medya oturumlarını listeleyip çıkar
 //   dotnet run > log.txt      → aktif söz satırlarını zaman damgasıyla dosyaya yazar
 // -----------------------------------------------------------------------------------------
@@ -34,7 +34,7 @@ void Log(string msg)
     while (events.Count > MaxEvents && events.TryDequeue(out _)) { }
 }
 
-await using var watcher = new MediaSessionWatcher(filter);
+await using var watcher = MediaWatcher.Create(filter);
 watcher.Log += Log;
 
 try
@@ -43,8 +43,10 @@ try
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"SMTC başlatılamadı: {ex.Message}");
-    Console.WriteLine("Windows 10 1809 veya üzeri gerekir.");
+    Console.WriteLine($"Medya izleyici başlatılamadı: {ex.Message}");
+    Console.WriteLine(OperatingSystem.IsWindows()
+        ? "Windows 10 1809 veya üzeri gerekir."
+        : "macOS'ta Spotify masaüstü uygulaması gerekir.");
     return 1;
 }
 

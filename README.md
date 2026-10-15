@@ -1,12 +1,16 @@
 # LyricsSync
 
-Spotify masaüstü uygulamasının çaldığı şarkıyı ve anlık konumunu Windows medya oturumundan (SMTC)
-okur, [LRCLIB](https://lrclib.net)'den senkron sözleri çeker, **tüm şarkıyı tek seferde Türkçeye
+Spotify masaüstü uygulamasının çaldığı şarkıyı ve anlık konumunu okur (Windows'ta medya oturumundan
+(SMTC), macOS'ta Spotify'ın AppleScript arayüzünden), [LRCLIB](https://lrclib.net)'den senkron sözleri çeker, **tüm şarkıyı tek seferde Türkçeye
 çevirir** ve konsolda o anki satırı çevirisiyle birlikte vurgular.
 
 ## Gereksinimler
 
-- Windows 10 (1809+) veya Windows 11, .NET 8 SDK, Spotify masaüstü uygulaması
+- **Windows:** Windows 10 (1809+) veya Windows 11, .NET 8 SDK, Spotify masaüstü uygulaması
+- **macOS:** .NET 8 veya daha yeni SDK (ör. .NET 10), Spotify masaüstü uygulaması
+  - İlk çalıştırmada macOS, terminalin Spotify'ı kontrol etmesi için izin ister; **İzin Ver** de.
+    Yanlışlıkla reddettiysen: Sistem Ayarları → Gizlilik ve Güvenlik → Otomasyon → terminal
+    uygulaman → Spotify'ı aç.
 - Çeviri için **bir** API anahtarı:
   - **DeepL** Free Plan gayet yeterli çalışıyor
   - - **Claude** Kullanılabilir ama ücretli
@@ -16,10 +20,12 @@ okur, [LRCLIB](https://lrclib.net)'den senkron sözleri çeker, **tüm şarkıy�
 Programı bir kez çalıştırınca şu dosya oluşur:
 
 ```
-%LOCALAPPDATA%\LyricsSync\settings.json
+Windows: %LOCALAPPDATA%\LyricsSync\settings.json
+macOS:   ~/Library/Application Support/LyricsSync/settings.json
 ```
 
-Not Defteri ile aç (`Win+R` → `notepad %LOCALAPPDATA%\LyricsSync\settings.json`) ve anahtarını yaz:
+Windows'ta Not Defteri ile aç (`Win+R` → `notepad %LOCALAPPDATA%\LyricsSync\settings.json`),
+macOS'ta `open -e ~/Library/Application\ Support/LyricsSync/settings.json` ile aç ve anahtarını yaz:
 
 ```json
 {
@@ -42,9 +48,9 @@ Ayarı değiştirdikten sonra programı yeniden başlat.
 
 ## Çalıştırma
 
-```powershell
+```bash
 dotnet run                 # Spotify'ı izler
-dotnet run -- --any        # Hangi uygulama çalıyorsa onu izler
+dotnet run -- --any        # Hangi uygulama çalıyorsa onu izler (yalnızca Windows)
 dotnet run -- --list       # Medya oturumlarını listeler ve çıkar
 dotnet run > log.txt       # Aktif satırları (ve çevirilerini) dosyaya yazar
 ```
@@ -67,14 +73,18 @@ dotnet run > log.txt       # Aktif satırları (ve çevirilerini) dosyaya yazar
 3. AI model çıktıyı bir araç çağrısı (tool use) olarak vermesi zorunlu kılınır; böylece yanıt
    her zaman geçerli JSON ve satır sayısı girdiyle aynı olur. Sayı tutmazsa hata gösterilir, `E` ile tekrar denenir.
 4. Şarkının dili algılanır; şarkı zaten Türkçeyse çeviri gösterilmez.
-5. Sonuç `%LOCALAPPDATA%\LyricsSync\cache\translations\` altına kaydedilir. Aynı şarkı tekrar
+5. Sonuç ayar dosyasının yanındaki `cache/translations/` klasörüne kaydedilir. Aynı şarkı tekrar
    çalınca API'ye gidilmez, maliyet sıfırdır.
 
 ## Dosyalar
 
 | Dosya | Görev |
 |---|---|
-| `MediaSessionWatcher.cs`, `MediaSnapshot.cs` | SMTC izleme, konum tahmini |
+| `IMediaWatcher.cs` | Platform bağımsız izleyici arayüzü, platforma göre seçim |
+| `MediaSessionWatcher.cs` | Windows: SMTC izleme |
+| `MacSpotifyWatcher.cs` | macOS: Spotify'ı AppleScript (osascript) ile yoklama |
+| `MediaSnapshot.cs` | Konum tahmini |
+| `CoverArt.cs` | Kapağı konsolda Braille noktalarıyla çizme (Windows: WinRT, macOS: `sips`) |
 | `Lyrics/LrcParser.cs`, `Lyrics/LrcLibClient.cs`, `Lyrics/LyricsService.cs` | Sözleri bulma ve ayrıştırma |
 | `Translation/ITranslator.cs` | Çevirmen arayüzü |
 | `Translation/ClaudeTranslator.cs` | Claude ile çeviri (tool use ile yapılandırılmış çıktı) |

@@ -14,7 +14,7 @@ public enum DisplayMode
 
 /// <summary>
 /// Konsol arayüzü (~20 FPS). Her karede:
-///  1) SMTC anlık görüntüsünden konumu yerel saatle tahmin eder,
+///  1) medya anlık görüntüsünden konumu yerel saatle tahmin eder,
 ///  2) söz ve çeviri servislerini günceller,
 ///  3) şarkı bazlı ofseti ekleyerek aktif satırı bulur, orijinali ve çevirisini vurgular,
 ///  4) klavye kısayollarını işler.
@@ -40,7 +40,7 @@ public sealed class ConsoleRenderer
 
     private bool _ansi;
 
-    private readonly MediaSessionWatcher _watcher;
+    private readonly IMediaWatcher _watcher;
     private readonly LyricsService _lyrics;
     private readonly TranslationService _translation;
     private readonly OffsetStore _offsets;
@@ -56,7 +56,7 @@ public sealed class ConsoleRenderer
     private string? _lastPrintedTrack;
 
     public ConsoleRenderer(
-        MediaSessionWatcher watcher,
+        IMediaWatcher watcher,
         LyricsService lyrics,
         TranslationService translation,
         OffsetStore offsets,
@@ -278,7 +278,7 @@ public sealed class ConsoleRenderer
                 tr = TranslationState.For(lyrics, TranslationStatus.Idle);
 
             rows.Add(new($" {(snap.IsPlaying ? "▶" : "⏸")} {Or(snap.Artist)} — {Or(snap.Title)}", ConsoleColor.White));
-            rows.Add(new($" {MediaSessionWatcher.Fmt(pos)} / {MediaSessionWatcher.Fmt(snap.Duration)}  "
+            rows.Add(new($" {MediaSnapshot.Fmt(pos)} / {MediaSnapshot.Fmt(snap.Duration)}  "
                          + ProgressBar(pos, snap.Duration, Math.Min(40, width - 30)), ConsoleColor.Gray));
             rows.Add(new($" {SourceLabel(lyrics, snap)} · ofset {FormatOffset(offsetMs)}", ConsoleColor.DarkGray));
             rows.Add(new($" {TranslationLabel(tr, lyrics, snap)} · görünüm: {ModeLabel(_mode)}", ConsoleColor.DarkGray));
@@ -465,7 +465,7 @@ public sealed class ConsoleRenderer
 
         _lastPrintedIndex = idx;
         var line = state.Lines[idx];
-        Console.WriteLine($"[{MediaSessionWatcher.Fmt(line.Time)}] {(line.Text.Length == 0 ? "♪" : line.Text)}");
+        Console.WriteLine($"[{MediaSnapshot.Fmt(line.Time)}] {(line.Text.Length == 0 ? "♪" : line.Text)}");
 
         var tr = _translation.Current;
         if (ReferenceEquals(tr.Source, state) && tr.Lookup(line.Text) is { } t)

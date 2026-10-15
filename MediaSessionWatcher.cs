@@ -11,11 +11,8 @@ namespace LyricsSync.Probe;
 ///  - SMTC olayları (şarkı, oynatma durumu, zaman çizelgesi değişince)
 ///  - 1 sn'lik yedek yoklama (bazı uygulamalar olayları her zaman tetiklemez)
 /// </summary>
-public sealed class MediaSessionWatcher : IAsyncDisposable
+public sealed class MediaSessionWatcher : IMediaWatcher
 {
-    /// <summary>Konum beklenenden bu kadar saparsa "sarma" (seek) olarak kabul edilir.</summary>
-    private static readonly TimeSpan SeekThreshold = TimeSpan.FromSeconds(2);
-
     private readonly Func<string, bool> _appFilter;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -192,7 +189,7 @@ public sealed class MediaSessionWatcher : IAsyncDisposable
                 _snapshot = snapshot;
             }
 
-            ReportChanges(previous, snapshot);
+            MediaWatcher.ReportChanges(previous, snapshot, Log);
             await EnsureCoverAsync(props, snapshot.TrackKey);
         }
         catch (Exception ex)
@@ -242,34 +239,6 @@ public sealed class MediaSessionWatcher : IAsyncDisposable
             Log?.Invoke($"Kapak okunamadı: {ex.GetType().Name}: {ex.Message}");
         }
     }
-
-    private void ReportChanges(MediaSnapshot? prev, MediaSnapshot cur)
-    {
-        if (prev is null || prev.TrackKey != cur.TrackKey)
-        {
-            if (!string.IsNullOrWhiteSpace(cur.Title))
-                Log?.Invoke($"Şarkı: {cur.Artist} — {cur.Title} ({Fmt(cur.Duration)})");
-            return;
-        }
-
-        if (prev.IsPlaying != cur.IsPlaying)
-            Log?.Invoke(cur.IsPlaying ? $"Oynatma başladı @ {Fmt(cur.Position)}" : $"Duraklatıldı @ {Fmt(cur.Position)}");
-
-        // Yeni bir zaman çizelgesi değeri geldiyse, önceki tahminle karşılaştır.
-        if (cur.PositionTimestamp != prev.PositionTimestamp)
-        {
-            var expected = prev.EstimatePosition(cur.PositionTimestamp);
-            var drift = cur.Position - expected;
-
-            if (drift.Duration() >= SeekThreshold)
-                Log?.Invoke($"Sarma algılandı: {Fmt(expected)} → {Fmt(cur.Position)}");
-            else if (prev.IsPlaying && cur.IsPlaying && drift.Duration() >= TimeSpan.FromMilliseconds(50))
-                Log?.Invoke($"Senkron düzeltmesi: {drift.TotalMilliseconds:+0;-0} ms");
-        }
-    }
-
-    internal static string Fmt(TimeSpan t) =>
-        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss\.f");
 
     public ValueTask DisposeAsync()
     {
