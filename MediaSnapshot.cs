@@ -37,4 +37,7 @@ public sealed record MediaSnapshot(
         if (Duration > TimeSpan.Zero && position > Duration) position = Duration;
         return position;
     }
+
+    internal static string Fmt(TimeSpan t) =>
+        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss\.f");
 }

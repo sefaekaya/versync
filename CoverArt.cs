@@ -1,6 +1,11 @@
 using System.Runtime.InteropServices;
 using System.Text;
+#if WINDOWS
 using Windows.Graphics.Imaging;
+#else
+using System.Buffers.Binary;
+using System.Diagnostics;
+#endif
 
 namespace LyricsSync.Probe;
 
@@ -25,6 +30,7 @@ public sealed class CoverArt
         Lines = lines;
     }
 
+#if WINDOWS
     /// <summary>SMTC küçük resim akışından kapağı okur ve noktalı çizime çevirir.</summary>
     public static async Task<CoverArt> FromStreamAsync(
         Windows.Storage.Streams.IRandomAccessStream stream, string trackKey)
@@ -45,6 +51,82 @@ public sealed class CoverArt
 
         return new CoverArt(trackKey, Render(data.DetachPixelData()));
     }
+#else
+    /// <summary>
+    /// Kodlanmış görselden (JPEG/PNG baytları) kapağı okur ve noktalı çizime çevirir.
+    /// Ek paket gerekmesin diye macOS'un yerleşik <c>sips</c> aracıyla 96×96 BMP'ye çevrilir.
+    /// </summary>
+    public static async Task<CoverArt> FromEncodedImageAsync(byte[] encoded, string trackKey, CancellationToken ct)
+    {
+        var src = Path.Combine(Path.GetTempPath(), $"lyricssync-{Guid.NewGuid():N}.img");
+        var bmp = Path.ChangeExtension(src, ".bmp");
+        try
+        {
+            await File.WriteAllBytesAsync(src, encoded, ct);
+
+            var psi = new ProcessStartInfo("/usr/bin/sips")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            foreach (var arg in new[] { "-z", $"{DotSize}", $"{DotSize}", "-s", "format", "bmp", src, "--out", bmp })
+                psi.ArgumentList.Add(arg);
+
+            using var process = Process.Start(psi) ?? throw new InvalidOperationException("sips başlatılamadı.");
+            var stderr = process.StandardError.ReadToEndAsync(ct);
+            await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"sips: {(await stderr).Trim()}");
+
+            return new CoverArt(trackKey, Render(ReadBmp(await File.ReadAllBytesAsync(bmp, ct))));
+        }
+        finally
+        {
+            try { File.Delete(src); } catch { /* yok say */ }
+            try { File.Delete(bmp); } catch { /* yok say */ }
+        }
+    }
+
+    /// <summary>Sıkıştırmasız 24/32 bit BMP'yi DotSize×DotSize BGRA dizisine çevirir.</summary>
+    private static byte[] ReadBmp(byte[] file)
+    {
+        if (file.Length < 54 || file[0] != 'B' || file[1] != 'M')
+            throw new InvalidDataException("Geçersiz BMP.");
+
+        int dataOffset = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(10));
+        int width = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(18));
+        int height = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(22));
+        int bpp = BinaryPrimitives.ReadUInt16LittleEndian(file.AsSpan(28));
+        bool topDown = height < 0;
+        height = Math.Abs(height);
+
+        if (width != DotSize || height != DotSize || (bpp != 24 && bpp != 32))
+            throw new InvalidDataException($"Beklenmeyen BMP biçimi: {width}×{height}, {bpp} bit.");
+
+        int bytesPerPixel = bpp / 8;
+        int stride = (width * bytesPerPixel + 3) & ~3;
+        if (dataOffset + stride * height > file.Length)
+            throw new InvalidDataException("BMP verisi eksik.");
+
+        var bgra = new byte[DotSize * DotSize * 4];
+        for (int y = 0; y < height; y++)
+        {
+            int srcRow = dataOffset + (topDown ? y : height - 1 - y) * stride;
+            for (int x = 0; x < width; x++)
+            {
+                int si = srcRow + x * bytesPerPixel;
+                int di = (y * DotSize + x) * 4;
+                bgra[di] = file[si];
+                bgra[di + 1] = file[si + 1];
+                bgra[di + 2] = file[si + 2];
+                bgra[di + 3] = 255;
+            }
+        }
+        return bgra;
+    }
+#endif
 
     // Braille nokta bitleri: [sütun, satır] → bit.  Karakter = U+2800 + bitler.
     private static readonly int[,] DotBit =
@@ -143,6 +225,9 @@ public sealed class CoverArt
     /// <summary>Konsolda ANSI renk kodlarını açar. Açılamazsa false döner (kapak gösterilmez).</summary>
     public static bool EnableAnsi()
     {
+        // macOS / Linux terminalleri ANSI'yi zaten destekler.
+        if (!OperatingSystem.IsWindows()) return true;
+
         try
         {
             var h = GetStdHandle(StdOutputHandle);

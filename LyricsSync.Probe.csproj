@@ -2,10 +2,6 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- Windows.Media.Control (SMTC) API'leri için Windows SDK projeksiyonu gerekir -->
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-    <!-- GlobalSystemMediaTransportControlsSessionManager Windows 10 1809 (17763) ile geldi -->
-    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>LyricsSync.Probe</RootNamespace>
@@ -16,5 +12,26 @@
          bu konsol prototipine karışmasın. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);LyricsSync.Core\**;LyricsSync.Desktop\**</DefaultItemExcludes>
   </PropertyGroup>
+
+  <!-- Windows: Windows.Media.Control (SMTC) API'leri için Windows SDK projeksiyonu gerekir -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <!-- GlobalSystemMediaTransportControlsSessionManager Windows 10 1809 (17763) ile geldi -->
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!-- macOS: Spotify AppleScript ile okunur. RollForward: makinede yalnızca daha yeni bir .NET (ör. 10) kuruluysa onunla çalışır. -->
+  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <!-- Her platform yalnızca kendi medya izleyicisini derler. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Compile Remove="MacSpotifyWatcher.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <Compile Remove="MediaSessionWatcher.cs" />
+  </ItemGroup>
 
 </Project>
